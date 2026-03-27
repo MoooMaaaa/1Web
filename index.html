@@ -565,9 +565,6 @@ if(tab===3)content=h(StatsTab,{data:data});
 if(tab===4)content=h(ExportTab,{data:data});
 
 return h("div",{style:{minHeight:"100vh",background:"#14141f",fontFamily:"'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',sans-serif",color:"#e2e8f0"}},
-h("div",{style:{background:"linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%)",padding:"24px 28px 16px",borderBottom:"1px solid rgba(255,255,255,.06)"}},
-h("h1",{style:{margin:0,fontSize:22,fontWeight:700,color:"#e2e8f0",letterSpacing:1}},"📚 班级管理助手"),
-h("p",{style:{margin:"4px 0 0",fontSize:12,color:"#a5b4fc",opacity:0.8}},data.classes.length+" 个班级 · "+totalStu+" 名学生 · "+data.exams.length+" 次考试")),
 h("div",{style:{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e",overflowX:"auto"}},tabBtns),
 h("div",{style:{padding:"16px 16px 100px"}},content));
 }
