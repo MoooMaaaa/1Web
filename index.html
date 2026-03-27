@@ -10,19 +10,18 @@
 <meta name="theme-color" content="#14141f">
 <title>班级管理助手</title>
 <link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%23312e81'/><text x='256' y='380' font-size='320' text-anchor='middle'>📚</text></svg>">
-<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
 <style>
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html{overflow:hidden;height:100%}
-body{overflow:auto;height:100%;background:#14141f;font-family:'Noto Sans SC',sans-serif;color:#e2e8f0;-webkit-font-smoothing:antialiased;-webkit-overflow-scrolling:touch}
+body{overflow:auto;height:100%;background:#14141f;font-family:'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',sans-serif;color:#e2e8f0;-webkit-font-smoothing:antialiased;-webkit-overflow-scrolling:touch}
 #root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
 input,textarea,button{font-family:inherit}
 canvas{display:block;width:100%!important;height:auto!important}
 </style>
 </head>
 <body>
-<div id="root"></div>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<div id="root"><div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:#a5b4fc;font-family:sans-serif"><div style="font-size:48px;margin-bottom:16px">📚</div><div>加载中...</div><div style="font-size:11px;color:#64748b;margin-top:8px">如长时间无反应，请检查网络连接</div></div></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js" onerror="document.getElementById('root').innerHTML='<div style=\'display:flex;flex-direction:column;align-items:center;justify-content:center;height:100vh;color:#ef4444;font-family:sans-serif\'><div style=\'font-size:48px;margin-bottom:16px\'>⚠️</div><div>加载失败</div><div style=\'font-size:11px;color:#64748b;margin-top:8px\'>请检查网络或刷新重试</div></div>'"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
 <script>
 "use strict";
@@ -43,8 +42,10 @@ var u=URL.createObjectURL(blob),a=document.createElement("a");
 a.href=u;a.download=fn;a.click();URL.revokeObjectURL(u);
 }
 
-var TABS=["班级管理","作业打卡","考试成绩","数据统计","数据导出"];
-var TICONS=["🏫","✅","📝","📊","📤"];
+var TABS=["作业打卡","数据统计"];
+var TICONS=["✅","📊"];
+var SET_TABS=["班级管理","考试成绩","数据导出"];
+var SET_ICONS=["🏫","📝","📤"];
 var HW_MAP={missing:"未完成",done:"完成",excellent:"优秀"};
 var HW_CLR={missing:"#ef4444",done:"#22c55e",excellent:"#f59e0b"};
 var CC=["#6366f1","#06b6d4","#f59e0b","#ef4444","#22c55e","#ec4899","#8b5cf6","#14b8a6"];
@@ -544,13 +545,13 @@ h("p",{style:{fontSize:11,color:"#64748b",textAlign:"center",marginTop:8}},"此�
 // ── App ──
 function App(){
 var tab=useState(0),setTab=tab[1];tab=tab[0];
+var showSettings=useState(false),setShowSettings=showSettings[1];showSettings=showSettings[0];
+var stab=useState(0),setStab=stab[1];stab=stab[0];
 var data=useState(function(){return load()||makeDef()}),setData=data[1];data=data[0];
 
 var update=useCallback(function(fn){
 setData(function(prev){var next=fn(JSON.parse(JSON.stringify(prev)));save(next);return next});
 },[]);
-
-var totalStu=0;data.classes.forEach(function(c){totalStu+=c.students.length});
 
 var tabBtns=TABS.map(function(t,i){
 var act=tab===i;
@@ -558,19 +559,33 @@ return h("button",{key:i,onClick:function(){setTab(i)},style:{flex:1,padding:"12
 h("div",{style:{fontSize:18,marginBottom:2}},TICONS[i]),t);
 });
 
-var content=null;
-if(tab===0)content=h(ClassTab,{data:data,update:update});
-if(tab===1)content=h(HomeworkTab,{data:data,update:update});
-if(tab===2)content=h(ExamTab,{data:data,update:update});
-if(tab===3)content=h(StatsTab,{data:data});
-if(tab===4)content=h(ExportTab,{data:data});
+var stabBtns=SET_TABS.map(function(t,i){
+var act=stab===i;
+return h("button",{key:i,onClick:function(){setStab(i)},style:{flex:1,padding:"12px 6px 10px",border:"none",cursor:"pointer",fontSize:12,fontWeight:act?600:400,color:act?"#a5b4fc":"#64748b",background:"transparent",borderBottom:act?"2px solid #818cf8":"2px solid transparent",transition:"all .15s",whiteSpace:"nowrap"}},
+h("div",{style:{fontSize:18,marginBottom:2}},SET_ICONS[i]),t);
+});
 
-return h("div",{style:{minHeight:"100vh",background:"#14141f",fontFamily:"'Noto Sans SC',sans-serif",color:"#e2e8f0"}},
-h("div",{style:{background:"linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%)",padding:"24px 28px 16px",borderBottom:"1px solid rgba(255,255,255,.06)"}},
-h("h1",{style:{margin:0,fontSize:22,fontWeight:700,color:"#e2e8f0",letterSpacing:1}},"📚 班级管理助手"),
-h("p",{style:{margin:"4px 0 0",fontSize:12,color:"#a5b4fc",opacity:0.8}},data.classes.length+" 个班级 · "+totalStu+" 名学生 · "+data.exams.length+" 次考试")),
-h("div",{style:{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e",overflowX:"auto"}},tabBtns),
-h("div",{style:{padding:"16px 16px 100px"}},content));
+var content=null;
+if(tab===0)content=h(HomeworkTab,{data:data,update:update});
+if(tab===1)content=h(StatsTab,{data:data});
+
+var scontent=null;
+if(stab===0)scontent=h(ClassTab,{data:data,update:update});
+if(stab===1)scontent=h(ExamTab,{data:data,update:update});
+if(stab===2)scontent=h(ExportTab,{data:data});
+
+return h("div",{style:{minHeight:"100vh",background:"#14141f",fontFamily:"'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',sans-serif",color:"#e2e8f0"}},
+h("div",{style:{display:"flex",alignItems:"stretch",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
+h("div",{style:{display:"flex",flex:1}},tabBtns),
+h("button",{onClick:function(){setShowSettings(true)},style:{padding:"10px 16px",border:"none",cursor:"pointer",fontSize:20,background:"transparent",color:"#64748b",flexShrink:0}},
+"⚙️")),
+h("div",{style:{padding:"16px 16px 100px"}},content),
+showSettings&&h("div",{style:{position:"fixed",inset:0,zIndex:100,background:"#14141f",display:"flex",flexDirection:"column"}},
+h("div",{style:{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
+h("button",{onClick:function(){setShowSettings(false)},style:{background:"none",border:"none",color:"#a5b4fc",fontSize:15,cursor:"pointer",padding:0}},"← 返回"),
+h("span",{style:{fontWeight:600,fontSize:15}},"设置")),
+h("div",{style:{display:"flex",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},stabBtns),
+h("div",{style:{flex:1,overflowY:"auto",padding:"16px 16px 100px"}},scontent)));
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(h(App));
