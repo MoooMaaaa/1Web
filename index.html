@@ -42,8 +42,10 @@ var u=URL.createObjectURL(blob),a=document.createElement("a");
 a.href=u;a.download=fn;a.click();URL.revokeObjectURL(u);
 }
 
-var TABS=["班级管理","作业打卡","考试成绩","数据统计","数据导出"];
-var TICONS=["🏫","✅","📝","📊","📤"];
+var TABS=["作业打卡","数据统计"];
+var TICONS=["✅","📊"];
+var SET_TABS=["班级管理","考试成绩","数据导出"];
+var SET_ICONS=["🏫","📝","📤"];
 var HW_MAP={missing:"未完成",done:"完成",excellent:"优秀"};
 var HW_CLR={missing:"#ef4444",done:"#22c55e",excellent:"#f59e0b"};
 var CC=["#6366f1","#06b6d4","#f59e0b","#ef4444","#22c55e","#ec4899","#8b5cf6","#14b8a6"];
@@ -543,13 +545,13 @@ h("p",{style:{fontSize:11,color:"#64748b",textAlign:"center",marginTop:8}},"此�
 // ── App ──
 function App(){
 var tab=useState(0),setTab=tab[1];tab=tab[0];
+var showSettings=useState(false),setShowSettings=showSettings[1];showSettings=showSettings[0];
+var stab=useState(0),setStab=stab[1];stab=stab[0];
 var data=useState(function(){return load()||makeDef()}),setData=data[1];data=data[0];
 
 var update=useCallback(function(fn){
 setData(function(prev){var next=fn(JSON.parse(JSON.stringify(prev)));save(next);return next});
 },[]);
-
-var totalStu=0;data.classes.forEach(function(c){totalStu+=c.students.length});
 
 var tabBtns=TABS.map(function(t,i){
 var act=tab===i;
@@ -557,16 +559,33 @@ return h("button",{key:i,onClick:function(){setTab(i)},style:{flex:1,padding:"12
 h("div",{style:{fontSize:18,marginBottom:2}},TICONS[i]),t);
 });
 
+var stabBtns=SET_TABS.map(function(t,i){
+var act=stab===i;
+return h("button",{key:i,onClick:function(){setStab(i)},style:{flex:1,padding:"12px 6px 10px",border:"none",cursor:"pointer",fontSize:12,fontWeight:act?600:400,color:act?"#a5b4fc":"#64748b",background:"transparent",borderBottom:act?"2px solid #818cf8":"2px solid transparent",transition:"all .15s",whiteSpace:"nowrap"}},
+h("div",{style:{fontSize:18,marginBottom:2}},SET_ICONS[i]),t);
+});
+
 var content=null;
-if(tab===0)content=h(ClassTab,{data:data,update:update});
-if(tab===1)content=h(HomeworkTab,{data:data,update:update});
-if(tab===2)content=h(ExamTab,{data:data,update:update});
-if(tab===3)content=h(StatsTab,{data:data});
-if(tab===4)content=h(ExportTab,{data:data});
+if(tab===0)content=h(HomeworkTab,{data:data,update:update});
+if(tab===1)content=h(StatsTab,{data:data});
+
+var scontent=null;
+if(stab===0)scontent=h(ClassTab,{data:data,update:update});
+if(stab===1)scontent=h(ExamTab,{data:data,update:update});
+if(stab===2)scontent=h(ExportTab,{data:data});
 
 return h("div",{style:{minHeight:"100vh",background:"#14141f",fontFamily:"'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',sans-serif",color:"#e2e8f0"}},
-h("div",{style:{display:"flex",gap:0,borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e",overflowX:"auto"}},tabBtns),
-h("div",{style:{padding:"16px 16px 100px"}},content));
+h("div",{style:{display:"flex",alignItems:"stretch",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
+h("div",{style:{display:"flex",flex:1}},tabBtns),
+h("button",{onClick:function(){setShowSettings(true)},style:{padding:"10px 16px",border:"none",cursor:"pointer",fontSize:20,background:"transparent",color:"#64748b",flexShrink:0}},
+"⚙️")),
+h("div",{style:{padding:"16px 16px 100px"}},content),
+showSettings&&h("div",{style:{position:"fixed",inset:0,zIndex:100,background:"#14141f",display:"flex",flexDirection:"column"}},
+h("div",{style:{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
+h("button",{onClick:function(){setShowSettings(false)},style:{background:"none",border:"none",color:"#a5b4fc",fontSize:15,cursor:"pointer",padding:0}},"← 返回"),
+h("span",{style:{fontWeight:600,fontSize:15}},"设置")),
+h("div",{style:{display:"flex",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},stabBtns),
+h("div",{style:{flex:1,overflowY:"auto",padding:"16px 16px 100px"}},scontent)));
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(h(App));
