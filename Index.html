@@ -1,0 +1,586 @@
+<!DOCTYPE html>
+
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="班级助手">
+<meta name="theme-color" content="#14141f">
+<title>班级管理助手</title>
+<link rel="apple-touch-icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 512 512'><rect width='512' height='512' rx='96' fill='%23312e81'/><text x='256' y='380' font-size='320' text-anchor='middle'>📚</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+SC:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html{overflow:hidden;height:100%}
+body{overflow:auto;height:100%;background:#14141f;font-family:'Noto Sans SC',sans-serif;color:#e2e8f0;-webkit-font-smoothing:antialiased;-webkit-overflow-scrolling:touch}
+#root{padding-top:env(safe-area-inset-top);padding-bottom:env(safe-area-inset-bottom)}
+input,textarea,button{font-family:inherit}
+canvas{display:block;width:100%!important;height:auto!important}
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+"use strict";
+var h = React.createElement;
+var useState = React.useState, useEffect = React.useEffect, useCallback = React.useCallback, useMemo = React.useMemo, useRef = React.useRef;
+
+var SK = “class-mgr-pwa-v1”;
+function save(d){try{localStorage.setItem(SK,JSON.stringify(d))}catch(e){}}
+function load(){try{var r=localStorage.getItem(SK);return r?JSON.parse(r):null}catch(e){return null}}
+function makeDef(){return{classes:[],homework:[],exams:[],nextId:1}}
+
+function escCSV(v){var s=String(v==null?””:v);return ‘”’+s.replace(/”/g,’””’)+’”’}
+function exportCSV(fn,hd,rows){
+var B=”\uFEFF”,lines=[hd.map(escCSV).join(”,”)];
+for(var i=0;i<rows.length;i++)lines.push(rows[i].map(escCSV).join(”,”));
+var blob=new Blob([B+lines.join(”\n”)],{type:“text/csv;charset=utf-8”});
+var u=URL.createObjectURL(blob),a=document.createElement(“a”);
+a.href=u;a.download=fn;a.click();URL.revokeObjectURL(u);
+}
+
+var TABS=[“班级管理”,“作业打卡”,“考试成绩”,“数据统计”,“数据导出”];
+var TICONS=[“🏫”,“✅”,“📝”,“📊”,“📤”];
+var HW_MAP={missing:“未完成”,done:“完成”,excellent:“优秀”};
+var HW_CLR={missing:”#ef4444”,done:”#22c55e”,excellent:”#f59e0b”};
+var CC=[”#6366f1”,”#06b6d4”,”#f59e0b”,”#ef4444”,”#22c55e”,”#ec4899”,”#8b5cf6”,”#14b8a6”];
+
+function sum(arr){var t=0;for(var i=0;i<arr.length;i++)t+=arr[i];return t}
+
+// ── Canvas Bar Chart ──
+function BarChartCanvas(props){
+var data=props.data,labelKey=props.labelKey,valueKey=props.valueKey,maxVal=props.maxVal,colors=props.colors;
+var ref=useRef(null);
+useEffect(function(){
+var canvas=ref.current;if(!canvas||!data||data.length===0)return;
+var dpr=window.devicePixelRatio||1;
+var w=canvas.parentElement.clientWidth,ht=180;
+canvas.width=w*dpr;canvas.height=ht*dpr;
+canvas.style.width=w+“px”;canvas.style.height=ht+“px”;
+var ctx=canvas.getContext(“2d”);ctx.scale(dpr,dpr);
+ctx.clearRect(0,0,w,ht);
+var pad={l:36,r:12,t:12,b:32};
+var cw=w-pad.l-pad.r,ch=ht-pad.t-pad.b;
+var n=data.length,barW=Math.min(cw/n*0.6,40),gap=(cw-barW*n)/(n+1);
+var mx=maxVal||0;
+if(!mx)for(var i=0;i<n;i++){var v=data[i][valueKey]||0;if(v>mx)mx=v}
+if(mx===0)mx=100;
+// grid
+ctx.strokeStyle=“rgba(255,255,255,0.06)”;ctx.lineWidth=1;
+for(var g=0;g<=4;g++){var gy=pad.t+ch-ch*(g/4);
+ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(w-pad.r,gy);ctx.stroke();
+ctx.fillStyle=”#64748b”;ctx.font=“10px sans-serif”;ctx.textAlign=“right”;
+ctx.fillText(Math.round(mx*g/4),pad.l-4,gy+3);
+}
+// bars
+for(var i=0;i<n;i++){
+var val=data[i][valueKey]||0;
+var x=pad.l+gap+(barW+gap)*i;
+var barH=ch*(val/mx);
+var y=pad.t+ch-barH;
+ctx.fillStyle=colors?colors[i%colors.length]:”#6366f1”;
+ctx.beginPath();
+ctx.roundRect?ctx.roundRect(x,y,barW,barH,4):ctx.fillRect(x,y,barW,barH);
+ctx.fill();
+// value on top
+ctx.fillStyle=”#a5b4fc”;ctx.font=“bold 11px sans-serif”;ctx.textAlign=“center”;
+ctx.fillText(val,x+barW/2,y-4);
+// label
+ctx.fillStyle=”#94a3b8”;ctx.font=“11px sans-serif”;
+ctx.fillText(data[i][labelKey]||””,x+barW/2,ht-pad.b+14);
+}
+},[data,labelKey,valueKey,maxVal,colors]);
+return h(“canvas”,{ref:ref,style:{width:“100%”}});
+}
+
+// ── Canvas Line Chart ──
+function LineChartCanvas(props){
+var data=props.data,labelKey=props.labelKey,lines=props.lines; // lines: [{key,color,dash}]
+var ref=useRef(null);
+useEffect(function(){
+var canvas=ref.current;if(!canvas||!data||data.length===0)return;
+var dpr=window.devicePixelRatio||1;
+var w=canvas.parentElement.clientWidth,ht=200;
+canvas.width=w*dpr;canvas.height=ht*dpr;
+canvas.style.width=w+“px”;canvas.style.height=ht+“px”;
+var ctx=canvas.getContext(“2d”);ctx.scale(dpr,dpr);
+ctx.clearRect(0,0,w,ht);
+var pad={l:36,r:12,t:12,b:44};
+var cw=w-pad.l-pad.r,ch=ht-pad.t-pad.b;
+var n=data.length;
+// find max
+var mx=0;
+for(var i=0;i<n;i++)for(var li=0;li<lines.length;li++){var v=data[i][lines[li].key]||0;if(v>mx)mx=v}
+if(mx===0)mx=100;mx=mx*1.1;
+// grid
+ctx.strokeStyle=“rgba(255,255,255,0.06)”;ctx.lineWidth=1;
+for(var g=0;g<=4;g++){var gy=pad.t+ch-ch*(g/4);
+ctx.beginPath();ctx.moveTo(pad.l,gy);ctx.lineTo(w-pad.r,gy);ctx.stroke();
+ctx.fillStyle=”#64748b”;ctx.font=“10px sans-serif”;ctx.textAlign=“right”;
+ctx.fillText(Math.round(mx*g/4),pad.l-4,gy+3);
+}
+// x labels
+for(var i=0;i<n;i++){
+var x=n===1?pad.l+cw/2:pad.l+cw*i/(n-1);
+ctx.fillStyle=”#94a3b8”;ctx.font=“11px sans-serif”;ctx.textAlign=“center”;
+ctx.fillText(data[i][labelKey]||””,x,ht-pad.b+14);
+}
+// lines
+for(var li=0;li<lines.length;li++){
+var ln=lines[li];
+ctx.strokeStyle=ln.color;ctx.lineWidth=ln.dash?1.5:2;
+if(ln.dash)ctx.setLineDash([5,3]);else ctx.setLineDash([]);
+ctx.beginPath();
+for(var i=0;i<n;i++){
+var x=n===1?pad.l+cw/2:pad.l+cw*i/(n-1);
+var y=pad.t+ch-ch*((data[i][ln.key]||0)/mx);
+if(i===0)ctx.moveTo(x,y);else ctx.lineTo(x,y);
+}
+ctx.stroke();
+// dots
+ctx.setLineDash([]);
+for(var i=0;i<n;i++){
+var x=n===1?pad.l+cw/2:pad.l+cw*i/(n-1);
+var y=pad.t+ch-ch*((data[i][ln.key]||0)/mx);
+ctx.fillStyle=ln.color;ctx.beginPath();ctx.arc(x,y,3,0,Math.PI*2);ctx.fill();
+}
+}
+// legend
+var lx=pad.l;
+ctx.font=“11px sans-serif”;
+for(var li=0;li<lines.length;li++){
+ctx.fillStyle=lines[li].color;
+ctx.fillRect(lx,ht-14,12,3);
+ctx.fillStyle=”#94a3b8”;
+ctx.textAlign=“left”;
+ctx.fillText(lines[li].key,lx+16,ht-10);
+lx+=ctx.measureText(lines[li].key).width+30;
+}
+},[data,labelKey,lines]);
+return h(“canvas”,{ref:ref,style:{width:“100%”}});
+}
+
+// ── UI Components ──
+function Modal(props){
+if(!props.open)return null;
+return h(“div”,{style:{position:“fixed”,inset:0,zIndex:999,display:“flex”,alignItems:“center”,justifyContent:“center”}},
+h(“div”,{onClick:props.onClose,style:{position:“absolute”,inset:0,background:“rgba(0,0,0,.5)”,backdropFilter:“blur(4px)”}}),
+h(“div”,{style:{position:“relative”,background:”#1e1e2e”,borderRadius:16,padding:“24px 28px”,minWidth:320,maxWidth:“90vw”,maxHeight:“80vh”,overflow:“auto”,boxShadow:“0 20px 40px rgba(0,0,0,.4)”,border:“1px solid rgba(255,255,255,.08)”}},
+h(“div”,{style:{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:16}},
+h(“h3”,{style:{margin:0,fontSize:17,color:”#e2e8f0”}},props.title),
+h(“button”,{onClick:props.onClose,style:{background:“none”,border:“none”,color:”#94a3b8”,fontSize:20,cursor:“pointer”}},“✕”)
+),
+props.children
+)
+);
+}
+
+function FInput(props){
+var label=props.label,rest={};
+for(var k in props)if(k!==“label”)rest[k]=props[k];
+rest.style={width:“100%”,padding:“10px 14px”,borderRadius:10,border:“1px solid rgba(255,255,255,.1)”,background:”#2a2a3e”,color:”#e2e8f0”,fontSize:14,outline:“none”,boxSizing:“border-box”};
+return h(“div”,{style:{marginBottom:12}},
+label&&h(“label”,{style:{display:“block”,fontSize:13,color:”#94a3b8”,marginBottom:4}},label),
+h(“input”,rest)
+);
+}
+
+function Btn(props){
+var bg=“rgba(255,255,255,.07)”,clr=”#c4b5fd”;
+if(props.danger){bg=”#ef4444”;clr=”#fff”}
+if(props.primary){bg=“linear-gradient(135deg,#6366f1,#8b5cf6)”;clr=”#fff”}
+var st=Object.assign({padding:props.small?“6px 14px”:“10px 20px”,borderRadius:10,border:“none”,fontSize:props.small?12:14,fontWeight:600,cursor:props.disabled?“not-allowed”:“pointer”,background:bg,color:clr,opacity:props.disabled?0.4:1,transition:“all .15s”},props.ex||{});
+return h(“button”,{onClick:props.onClick,disabled:props.disabled,style:st},props.children);
+}
+
+function Empty(props){
+return h(“div”,{style:{textAlign:“center”,padding:60,color:”#64748b”}},
+h(“div”,{style:{fontSize:48,marginBottom:12}},props.icon),
+h(“p”,null,props.text)
+);
+}
+
+function ChartCard(props){
+return h(“div”,{style:{background:”#1e1e2e”,borderRadius:12,border:“1px solid rgba(255,255,255,.05)”,padding:“16px 12px”,marginBottom:12}},
+h(“h3”,{style:{margin:“0 0 12px 4px”,fontSize:14,fontWeight:600,color:”#a5b4fc”}},props.title),
+props.children
+);
+}
+
+function ClassPicker(props){
+var items=[];
+if(props.showAll)items.push(h(“button”,{key:“all”,onClick:function(){props.onChange(null)},style:{padding:“6px 14px”,borderRadius:8,border:“none”,fontSize:12,fontWeight:600,cursor:“pointer”,background:props.value===null?”#6366f1”:“rgba(255,255,255,.07)”,color:props.value===null?”#fff”:”#94a3b8”}},“全部班级”));
+props.classes.forEach(function(c,i){
+var act=props.value===c.id;
+items.push(h(“button”,{key:c.id,onClick:function(){props.onChange(c.id)},style:{padding:“6px 14px”,borderRadius:8,border:“none”,fontSize:12,fontWeight:600,cursor:“pointer”,background:act?CC[i%CC.length]:“rgba(255,255,255,.07)”,color:act?”#fff”:”#94a3b8”}},c.name));
+});
+return h(“div”,{style:{display:“flex”,gap:6,flexWrap:“wrap”,marginBottom:14}},items);
+}
+
+function expandRange(input){
+var tokens=input.split(/[\n,，\s]+/).map(function(s){return s.trim()}).filter(Boolean);
+var result=[];
+tokens.forEach(function(tok){
+var m=tok.match(/^(\d+)\s*[-—~～]\s*(\d+)$/);
+if(m){var s=parseInt(m[1]),e=parseInt(m[2]);if(s>e){var t=s;s=e;e=t}for(var i=s;i<=e;i++)result.push(String(i))}
+else result.push(tok);
+});
+return result;
+}
+
+function parseScores(text){
+var scores={};if(!text||!text.trim())return scores;
+var pairs=text.trim().split(”..”);
+pairs.forEach(function(pair){
+pair=pair.trim();if(!pair)return;
+var ld=pair.lastIndexOf(”.”);if(ld<=0)return;
+var id=pair.substring(0,ld).trim(),sc=pair.substring(ld+1).trim();
+if(id&&sc&&!isNaN(Number(sc)))scores[id]=Number(sc);
+});
+return scores;
+}
+
+// ── ClassTab ──
+function ClassTab(props){
+var data=props.data,update=props.update;
+var s=useState,showAC=s(false),setShowAC=showAC[1];showAC=showAC[0];
+var cn=s(””),setCN=cn[1];cn=cn[0];
+var ecid=s(null),setECID=ecid[1];ecid=ecid[0];
+var showAS=s(null),setShowAS=showAS[1];showAS=showAS[0];
+var nids=s(””),setNids=nids[1];nids=nids[0];
+var exp=s(null),setExp=exp[1];exp=exp[0];
+
+function addClass(){
+if(!cn.trim())return;
+if(ecid){update(function(d){var c=d.classes.find(function(x){return x.id===ecid});if(c)c.name=cn.trim();return d})}
+else{update(function(d){d.classes.push({id:d.nextId++,name:cn.trim(),students:[]});return d})}
+setCN(””);setECID(null);setShowAC(false);
+}
+function delClass(id){if(!confirm(“确定删除该班级及其所有数据？”))return;update(function(d){d.classes=d.classes.filter(function(c){return c.id!==id});d.homework=d.homework.filter(function(h){return h.classId!==id});d.exams=d.exams.filter(function(e){return e.classId!==id});return d})}
+function addStu(cid){
+var lines=expandRange(nids);if(lines.length===0)return;
+update(function(d){var c=d.classes.find(function(x){return x.id===cid});if(!c)return d;
+lines.forEach(function(sid){if(c.students.indexOf(sid)===-1)c.students.push(sid)});
+c.students.sort(function(a,b){var na=parseInt(a),nb=parseInt(b);if(!isNaN(na)&&!isNaN(nb))return na-nb;return a.localeCompare(b)});return d});
+setNids(””);setShowAS(null);
+}
+function delStu(cid,sid){update(function(d){var c=d.classes.find(function(x){return x.id===cid});if(c)c.students=c.students.filter(function(s){return s!==sid});d.homework.forEach(function(hw){if(hw.classId===cid)delete hw.records[sid]});d.exams.forEach(function(e){if(e.classId===cid)delete e.scores[sid]});return d})}
+
+var classList=[];
+if(data.classes.length===0){classList.push(h(Empty,{key:“e”,icon:“🏫”,text:“还没有班级，点击上方按钮创建”}))}
+else{
+data.classes.forEach(function(c,ci){
+var isOpen=exp===c.id,color=CC[ci%CC.length];
+var inner=[];
+if(isOpen){
+var btns=h(“div”,{style:{display:“flex”,gap:8,paddingTop:12,marginBottom:12,flexWrap:“wrap”}},
+h(Btn,{small:true,primary:true,onClick:function(){setShowAS(c.id);setNids(””)}},”+ 添加学号”),
+h(Btn,{small:true,onClick:function(){setECID(c.id);setCN(c.name);setShowAC(true)}},“编辑班名”),
+h(Btn,{small:true,danger:true,onClick:function(){delClass(c.id)}},“删除班级”)
+);
+var stuList;
+if(c.students.length===0)stuList=h(“p”,{style:{color:”#64748b”,fontSize:13}},“暂无学生，请添加学号”);
+else{var tags=[];c.students.forEach(function(sid){tags.push(h(“div”,{key:sid,style:{display:“flex”,alignItems:“center”,gap:4,padding:“5px 10px”,background:”#2a2a3e”,borderRadius:8,fontSize:13}},h(“span”,{style:{color:”#e2e8f0”,fontWeight:500}},sid),h(“button”,{onClick:function(e){e.stopPropagation();delStu(c.id,sid)},style:{background:“none”,border:“none”,color:”#ef4444”,cursor:“pointer”,fontSize:11,padding:“0 2px”}},“✕”)))});stuList=h(“div”,{style:{display:“flex”,flexWrap:“wrap”,gap:6}},tags)}
+inner.push(h(“div”,{key:“detail”,style:{padding:“0 16px 14px”,borderTop:“1px solid rgba(255,255,255,.05)”}},btns,stuList));
+}
+classList.push(h(“div”,{key:c.id,style:{background:”#1e1e2e”,borderRadius:12,border:“1px solid rgba(255,255,255,.05)”,overflow:“hidden”}},
+h(“div”,{onClick:function(){setExp(isOpen?null:c.id)},style:{display:“flex”,alignItems:“center”,gap:12,padding:“14px 16px”,cursor:“pointer”}},
+h(“div”,{style:{width:8,height:36,borderRadius:4,background:color,flexShrink:0}}),
+h(“div”,{style:{flex:1}},h(“div”,{style:{fontWeight:600,fontSize:15}},c.name),h(“div”,{style:{fontSize:12,color:”#64748b”,marginTop:2}},c.students.length+” 名学生”)),
+h(“span”,{style:{color:”#64748b”,transition:“transform .2s”,transform:isOpen?“rotate(180deg)”:“none”}},“▾”)
+),inner
+));
+});
+}
+
+return h(“div”,null,
+h(“div”,{style:{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:16}},h(“h2”,{style:{margin:0,fontSize:16,fontWeight:600}},“班级管理”),h(Btn,{primary:true,onClick:function(){setECID(null);setCN(””);setShowAC(true)}},”+ 新建班级”)),
+h(“div”,{style:{display:“flex”,flexDirection:“column”,gap:10}},classList),
+h(Modal,{open:showAC,onClose:function(){setShowAC(false)},title:ecid?“编辑班级”:“新建班级”},
+h(FInput,{label:“班级名称”,value:cn,onChange:function(e){setCN(e.target.value)},placeholder:“例如：初二(3)班”}),
+h(Btn,{primary:true,onClick:addClass,ex:{width:“100%”,marginTop:4}},ecid?“保存修改”:“确认创建”)
+),
+h(Modal,{open:showAS!==null,onClose:function(){setShowAS(null)},title:“添加学号”},
+h(“p”,{style:{fontSize:13,color:”#94a3b8”,margin:“0 0 12px”}},“支持范围输入（如 1-31），也可用换行、空格或逗号分隔”),
+h(“textarea”,{value:nids,onChange:function(e){setNids(e.target.value)},placeholder:“1-31\n或：2401, 2402, 2403”,rows:6,style:{width:“100%”,padding:12,borderRadius:10,border:“1px solid rgba(255,255,255,.1)”,background:”#2a2a3e”,color:”#e2e8f0”,fontSize:14,resize:“vertical”,boxSizing:“border-box”,outline:“none”}}),
+h(Btn,{primary:true,onClick:function(){addStu(showAS)},ex:{width:“100%”,marginTop:12}},“确认添加”)
+)
+);
+}
+
+// ── HomeworkTab ──
+function HomeworkTab(props){
+var data=props.data,update=props.update;
+var s=useState;
+var showAdd=s(false),setShowAdd=showAdd[1];showAdd=showAdd[0];
+var title=s(””),setTitle=title[1];title=title[0];
+var date=s(new Date().toISOString().slice(0,10)),setDate=date[1];date=date[0];
+var selC=s(data.classes.length>0?data.classes[0].id:null),setSelC=selC[1];selC=selC[0];
+var exp=s(null),setExp=exp[1];exp=exp[0];
+
+var hwList=useMemo(function(){if(!selC)return[];return data.homework.filter(function(h){return h.classId===selC})},[data.homework,selC]);
+var curStu=useMemo(function(){var c=data.classes.find(function(x){return x.id===selC});return c?c.students:[]},[data.classes,selC]);
+
+function addHw(def){
+if(!title.trim()||!selC)return;
+var rec={};curStu.forEach(function(sid){rec[sid]=def});
+update(function(d){d.homework.unshift({id:d.nextId++,classId:selC,date:date,title:title.trim(),records:rec});return d});
+setTitle(””);setShowAdd(false);
+}
+function toggle(hwId,sid){
+var cycle=[“missing”,“done”,“excellent”];
+update(function(d){var hw=d.homework.find(function(x){return x.id===hwId});if(!hw)return d;var cur=hw.records[sid]||“missing”;hw.records[sid]=cycle[(cycle.indexOf(cur)+1)%3];return d});
+}
+function delHw(id){if(!confirm(“确定删除此次作业记录？”))return;update(function(d){d.homework=d.homework.filter(function(x){return x.id!==id});return d})}
+function shareHw(hw){
+var cls=data.classes.find(function(x){return x.id===hw.classId});
+var cn=cls?cls.name:””,stu=cls?cls.students:[];
+var exc=stu.filter(function(s){return hw.records[s]===“excellent”});
+var lines=[”【”+cn+” 作业情况】”,hw.title+”  “+hw.date];
+if(exc.length>0)lines.push(“⭐ 优秀（”+exc.length+“人）：”+exc.join(”、”));else lines.push(“暂无优秀”);
+var text=lines.join(”\n”);
+if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){alert(“已复制到剪贴板”)});
+else prompt(“请复制：”,text);
+}
+
+if(data.classes.length===0)return h(Empty,{icon:“✅”,text:“请先创建班级”});
+
+var cards=[];
+hwList.forEach(function(hw){
+var total=curStu.length;
+var comp=curStu.filter(function(s){return hw.records[s]===“done”||hw.records[s]===“excellent”}).length;
+var excCnt=curStu.filter(function(s){return hw.records[s]===“excellent”}).length;
+var pct=total>0?Math.round(comp/total*100):0;
+var isOpen=exp===hw.id;
+var pctClr=pct>=80?”#22c55e”:pct>=50?”#f59e0b”:”#ef4444”;
+var inner=[];
+if(isOpen){
+var legend=h(“div”,{style:{display:“flex”,gap:12,marginTop:12,marginBottom:10,fontSize:12,color:”#94a3b8”}},
+h(“span”,null,“点击切换：”),h(“span”,{style:{color:HW_CLR.missing}},“● 未完成”),h(“span”,{style:{color:HW_CLR.done}},“● 完成”),h(“span”,{style:{color:HW_CLR.excellent}},“● 优秀”));
+var grid=[];
+curStu.forEach(function(sid){
+var st=hw.records[sid]||“missing”;
+var emoji=st===“excellent”?“⭐”:st===“done”?“✓”:“✗”;
+grid.push(h(“button”,{key:sid,onClick:function(){toggle(hw.id,sid)},style:{display:“flex”,flexDirection:“column”,alignItems:“center”,justifyContent:“center”,padding:“10px 6px”,borderRadius:10,border:“2px solid “+HW_CLR[st],background:HW_CLR[st]+“15”,cursor:“pointer”,minHeight:56}},
+h(“span”,{style:{fontSize:16,marginBottom:2}},emoji),h(“span”,{style:{fontSize:13,fontWeight:600,color:HW_CLR[st]}},sid)));
+});
+var acts=h(“div”,{style:{display:“flex”,gap:8,marginTop:14}},
+h(“button”,{onClick:function(){shareHw(hw)},style:{flex:1,padding:“10px 0”,borderRadius:10,border:“none”,cursor:“pointer”,background:“linear-gradient(135deg,#6366f1,#8b5cf6)”,color:”#fff”,fontSize:14,fontWeight:600}},“📋 分享”),
+h(Btn,{danger:true,small:true,onClick:function(){delHw(hw.id)},ex:{padding:“10px 16px”}},“删除”));
+inner.push(h(“div”,{key:“d”,style:{padding:“0 16px 14px”,borderTop:“1px solid rgba(255,255,255,.05)”}},legend,h(“div”,{style:{display:“grid”,gridTemplateColumns:“repeat(auto-fill,minmax(72px,1fr))”,gap:8}},grid),acts));
+}
+cards.push(h(“div”,{key:hw.id,style:{background:”#1e1e2e”,borderRadius:12,border:“1px solid rgba(255,255,255,.05)”,overflow:“hidden”}},
+h(“div”,{onClick:function(){setExp(isOpen?null:hw.id)},style:{display:“flex”,alignItems:“center”,gap:12,padding:“14px 16px”,cursor:“pointer”}},
+h(“div”,{style:{flex:1}},h(“div”,{style:{fontWeight:600,fontSize:15}},hw.title),h(“div”,{style:{fontSize:12,color:”#64748b”,marginTop:2}},hw.date)),
+h(“div”,{style:{textAlign:“right”}},h(“div”,{style:{fontSize:18,fontWeight:700,color:pctClr}},pct+”%”),h(“div”,{style:{fontSize:11,color:”#64748b”}},comp+”/”+total+(excCnt>0?” ⭐”+excCnt:””))),
+h(“span”,{style:{color:”#64748b”,transition:“transform .2s”,transform:isOpen?“rotate(180deg)”:“none”}},“▾”)),inner));
+});
+
+return h(“div”,null,
+h(“div”,{style:{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:12}},h(“h2”,{style:{margin:0,fontSize:16,fontWeight:600}},“作业打卡”),h(Btn,{primary:true,onClick:function(){setShowAdd(true)}},”+ 新建作业”)),
+h(ClassPicker,{classes:data.classes,value:selC,onChange:setSelC}),
+hwList.length===0?h(Empty,{icon:“✅”,text:“该班级暂无作业记录”}):h(“div”,{style:{display:“flex”,flexDirection:“column”,gap:10}},cards),
+h(Modal,{open:showAdd,onClose:function(){setShowAdd(false)},title:“新建作业”},
+h(FInput,{label:“作业名称”,value:title,onChange:function(e){setTitle(e.target.value)},placeholder:“例如：第三章课后习题”}),
+h(FInput,{label:“日期”,type:“date”,value:date,onChange:function(e){setDate(e.target.value)}}),
+h(“label”,{style:{display:“block”,fontSize:13,color:”#94a3b8”,marginBottom:8}},“选择默认状态并创建：”),
+h(“div”,{style:{display:“flex”,gap:10}},
+h(“button”,{onClick:function(){addHw(“done”)},style:{flex:1,padding:“14px 0”,borderRadius:12,border:“2px solid #22c55e”,background:”#22c55e18”,color:”#22c55e”,fontSize:15,fontWeight:700,cursor:“pointer”}},“✓ 默认完成”),
+h(“button”,{onClick:function(){addHw(“missing”)},style:{flex:1,padding:“14px 0”,borderRadius:12,border:“2px solid #ef4444”,background:”#ef444418”,color:”#ef4444”,fontSize:15,fontWeight:700,cursor:“pointer”}},“✗ 默认未完成”)))
+);
+}
+
+// ── ExamTab ──
+function ExamTab(props){
+var data=props.data,update=props.update;
+var s=useState;
+var showAdd=s(false),setShowAdd=showAdd[1];showAdd=showAdd[0];
+var showApp=s(null),setShowApp=showApp[1];showApp=showApp[0];
+var title=s(””),setTitle=title[1];title=title[0];
+var fs=s(“100”),setFS=fs[1];fs=fs[0];
+var st=s(””),setST=st[1];st=st[0];
+var at=s(””),setAT=at[1];at=at[0];
+var selC=s(data.classes.length>0?data.classes[0].id:null),setSelC=selC[1];selC=selC[0];
+var exp=s(null),setExp=exp[1];exp=exp[0];
+
+var exList=useMemo(function(){if(!selC)return[];return data.exams.filter(function(e){return e.classId===selC})},[data.exams,selC]);
+var curStu=useMemo(function(){var c=data.classes.find(function(x){return x.id===selC});return c?c.students:[]},[data.classes,selC]);
+
+function addExam(){
+if(!title.trim()||!selC)return;
+var parsed=parseScores(st),scores={};
+curStu.forEach(function(sid){scores[sid]=parsed[sid]!==undefined?parsed[sid]:””});
+update(function(d){d.exams.unshift({id:d.nextId++,classId:selC,date:new Date().toISOString().slice(0,10),title:title.trim(),fullScore:Number(fs)||100,scores:scores});return d});
+setTitle(””);setShowAdd(false);setFS(“100”);setST(””);
+}
+function doApp(eid){
+var parsed=parseScores(at);if(Object.keys(parsed).length===0)return;
+update(function(d){var ex=d.exams.find(function(e){return e.id===eid});if(!ex)return d;Object.keys(parsed).forEach(function(sid){ex.scores[sid]=parsed[sid]});return d});
+setAT(””);setShowApp(null);
+}
+function delExam(id){if(!confirm(“确定删除此次考试？”))return;update(function(d){d.exams=d.exams.filter(function(e){return e.id!==id});return d})}
+function pcnt(text){return Object.keys(parseScores(text)).length}
+
+if(data.classes.length===0)return h(Empty,{icon:“📝”,text:“请先创建班级”});
+
+var cards=[];
+exList.forEach(function(ex){
+var valid=curStu.map(function(s){return ex.scores[s]}).filter(function(v){return v!==””&&v!==undefined&&v!==null}).map(Number);
+var avg=valid.length>0?(sum(valid)/valid.length).toFixed(1):”-”;
+var mx=valid.length>0?Math.max.apply(null,valid):”-”;
+var mn=valid.length>0?Math.min.apply(null,valid):”-”;
+var isOpen=exp===ex.id;
+var ranked=curStu.map(function(s){return{sid:s,score:ex.scores[s]}}).filter(function(x){return x.score!==””&&x.score!==undefined}).sort(function(a,b){return Number(b.score)-Number(a.score)});
+var inner=[];
+if(isOpen){
+var stats=h(“div”,{style:{display:“flex”,gap:16,padding:“12px 0 8px”,fontSize:13}},h(“span”,{style:{color:”#22c55e”}},“最高 “+mx),h(“span”,{style:{color:”#f59e0b”}},“均分 “+avg),h(“span”,{style:{color:”#ef4444”}},“最低 “+mn));
+var tags=[];
+curStu.forEach(function(sid){
+var rank=ranked.findIndex(function(r){return r.sid===sid})+1;
+var sc=ex.scores[sid],has=sc!==””&&sc!==undefined&&sc!==null;
+tags.push(h(“div”,{key:sid,style:{display:“inline-flex”,alignItems:“center”,gap:4,padding:“4px 10px”,background:has?”#2a2a3e”:”#1a1a2a”,borderRadius:8,fontSize:12}},
+h(“span”,{style:{color:”#94a3b8”}},sid),h(“span”,{style:{color:has?”#e2e8f0”:”#4a5568”,fontWeight:600}},has?sc:”-”),
+rank>0&&h(“span”,{style:{fontSize:10,color:rank<=3?”#f59e0b”:”#64748b”}},”#”+rank)));
+});
+var acts=h(“div”,{style:{display:“flex”,gap:8,marginTop:12}},h(Btn,{small:true,primary:true,onClick:function(){setShowApp(ex.id);setAT(””)}},“追加/修改成绩”),h(Btn,{danger:true,small:true,onClick:function(){delExam(ex.id)}},“删除考试”));
+inner.push(h(“div”,{key:“d”,style:{padding:“0 16px 14px”,borderTop:“1px solid rgba(255,255,255,.05)”}},stats,h(“div”,{style:{display:“flex”,flexWrap:“wrap”,gap:6,marginTop:4}},tags),acts));
+}
+cards.push(h(“div”,{key:ex.id,style:{background:”#1e1e2e”,borderRadius:12,border:“1px solid rgba(255,255,255,.05)”,overflow:“hidden”}},
+h(“div”,{onClick:function(){setExp(isOpen?null:ex.id)},style:{display:“flex”,alignItems:“center”,gap:12,padding:“14px 16px”,cursor:“pointer”}},
+h(“div”,{style:{flex:1}},h(“div”,{style:{fontWeight:600,fontSize:15}},ex.title),h(“div”,{style:{fontSize:12,color:”#64748b”,marginTop:2}},ex.date+” · 满分 “+ex.fullScore)),
+h(“div”,{style:{textAlign:“right”}},h(“div”,{style:{fontSize:16,fontWeight:700,color:”#a5b4fc”}},“均”+avg),h(“div”,{style:{fontSize:11,color:”#64748b”}},valid.length+”/”+curStu.length+” 已录入”)),
+h(“span”,{style:{color:”#64748b”,transition:“transform .2s”,transform:isOpen?“rotate(180deg)”:“none”}},“▾”)),inner));
+});
+
+return h(“div”,null,
+h(“div”,{style:{display:“flex”,justifyContent:“space-between”,alignItems:“center”,marginBottom:12}},h(“h2”,{style:{margin:0,fontSize:16,fontWeight:600}},“考试成绩”),h(Btn,{primary:true,onClick:function(){setShowAdd(true)}},”+ 新建考试”)),
+h(ClassPicker,{classes:data.classes,value:selC,onChange:setSelC}),
+exList.length===0?h(Empty,{icon:“📝”,text:“该班级暂无考试记录”}):h(“div”,{style:{display:“flex”,flexDirection:“column”,gap:10}},cards),
+h(Modal,{open:showAdd,onClose:function(){setShowAdd(false)},title:“新建考试”},
+h(FInput,{label:“考试名称”,value:title,onChange:function(e){setTitle(e.target.value)},placeholder:“例如：期中数学考试”}),
+h(FInput,{label:“满分”,type:“number”,value:fs,onChange:function(e){setFS(e.target.value)}}),
+h(“div”,{style:{marginBottom:12}},h(“label”,{style:{display:“block”,fontSize:13,color:”#94a3b8”,marginBottom:4}},“考试信息（快速录入）”),
+h(“textarea”,{value:st,onChange:function(e){setST(e.target.value)},placeholder:“7.89..3.78..38.99\n表示：7号89分，3号78分，38号99分”,rows:4,style:{width:“100%”,padding:12,borderRadius:10,border:“1px solid rgba(255,255,255,.1)”,background:”#2a2a3e”,color:”#e2e8f0”,fontSize:14,resize:“vertical”,boxSizing:“border-box”,outline:“none”,fontFamily:“monospace”}}),
+st.trim()&&h(“div”,{style:{fontSize:12,color:”#a5b4fc”,marginTop:6}},“已识别 “+pcnt(st)+” 条成绩”)),
+h(Btn,{primary:true,onClick:addExam,ex:{width:“100%”,marginTop:4}},“创建考试”)),
+h(Modal,{open:showApp!==null,onClose:function(){setShowApp(null)},title:“追加/修改成绩”},
+h(“div”,{style:{marginBottom:12}},h(“label”,{style:{display:“block”,fontSize:13,color:”#94a3b8”,marginBottom:4}},“考试信息（快速录入）”),
+h(“textarea”,{value:at,onChange:function(e){setAT(e.target.value)},placeholder:“7.89..3.78..38.99\n已有成绩会被覆盖”,rows:4,style:{width:“100%”,padding:12,borderRadius:10,border:“1px solid rgba(255,255,255,.1)”,background:”#2a2a3e”,color:”#e2e8f0”,fontSize:14,resize:“vertical”,boxSizing:“border-box”,outline:“none”,fontFamily:“monospace”}}),
+at.trim()&&h(“div”,{style:{fontSize:12,color:”#a5b4fc”,marginTop:6}},“已识别 “+pcnt(at)+” 条成绩”)),
+h(Btn,{primary:true,onClick:function(){doApp(showApp)},ex:{width:“100%”,marginTop:4}},“确认录入”))
+);
+}
+
+// ── StatsTab ──
+function StatsTab(props){
+var data=props.data;
+var selC=useState(data.classes.length>0?data.classes[0].id:null),setSelC=selC[1];selC=selC[0];
+var curStu=useMemo(function(){var c=data.classes.find(function(x){return x.id===selC});return c?c.students:[]},[data.classes,selC]);
+var hwList=data.homework.filter(function(x){return x.classId===selC});
+var exList=data.exams.filter(function(x){return x.classId===selC});
+if(data.classes.length===0)return h(Empty,{icon:“📊”,text:“请先创建班级”});
+
+var hwData=hwList.slice().reverse().map(function(hw){
+var t=curStu.length,d=curStu.filter(function(s){return hw.records[s]===“done”||hw.records[s]===“excellent”}).length;
+return{name:hw.title.slice(0,6),val:t>0?Math.round(d/t*100):0};
+});
+var examTrend=exList.slice().reverse().map(function(ex){
+var sc=curStu.map(function(s){return ex.scores[s]}).filter(function(v){return v!==””&&v!==undefined}).map(Number);
+var avg=sc.length>0?+(sum(sc)/sc.length).toFixed(1):0;
+return{name:ex.title.slice(0,6),avg:avg,max:sc.length>0?Math.max.apply(null,sc):0,min:sc.length>0?Math.min.apply(null,sc):0};
+});
+var latestEx=exList[0],distData=[];
+if(latestEx){
+var fsc=latestEx.fullScore;
+var sc=curStu.map(function(s){return latestEx.scores[s]}).filter(function(v){return v!==””&&v!==undefined}).map(Number);
+distData=[{name:“优秀”,val:sc.filter(function(x){return x>=fsc*0.9}).length},{name:“良好”,val:sc.filter(function(x){return x>=fsc*0.8&&x<fsc*0.9}).length},{name:“及格”,val:sc.filter(function(x){return x>=fsc*0.6&&x<fsc*0.8}).length},{name:“不及格”,val:sc.filter(function(x){return x<fsc*0.6}).length}];
+}
+
+var charts=[];
+if(hwData.length>0)charts.push(h(ChartCard,{key:“hw”,title:“作业完成率趋势”},h(BarChartCanvas,{data:hwData,labelKey:“name”,valueKey:“val”,maxVal:100})));
+if(examTrend.length>0)charts.push(h(ChartCard,{key:“ex”,title:“考试成绩趋势”},h(LineChartCanvas,{data:examTrend,labelKey:“name”,lines:[{key:“avg”,color:”#6366f1”},{key:“max”,color:”#22c55e”,dash:true},{key:“min”,color:”#ef4444”,dash:true}]})));
+if(distData.length>0)charts.push(h(ChartCard,{key:“dist”,title:“成绩分布 - “+latestEx.title},h(BarChartCanvas,{data:distData,labelKey:“name”,valueKey:“val”,colors:CC})));
+
+return h(“div”,null,
+h(“h2”,{style:{margin:“0 0 12px”,fontSize:16,fontWeight:600}},“数据统计”),
+h(ClassPicker,{classes:data.classes,value:selC,onChange:setSelC}),
+charts.length===0?h(Empty,{icon:“📊”,text:“该班级暂无数据”}):h(“div”,null,charts));
+}
+
+// ── ExportTab ──
+function ExportTab(props){
+var data=props.data;
+var selC=useState(data.classes.length>0?data.classes[0].id:null),setSelC=selC[1];selC=selC[0];
+var curCls=data.classes.find(function(x){return x.id===selC});
+var stu=curCls?curCls.students:[];
+var hwL=data.homework.filter(function(x){return x.classId===selC});
+var exL=data.exams.filter(function(x){return x.classId===selC});
+
+function expHw(){var hd=[“学号”];hwL.forEach(function(x){hd.push(x.title+”(”+x.date+”)”)});var rows=stu.map(function(sid){var r=[sid];hwL.forEach(function(x){r.push(HW_MAP[x.records[sid]]||“未完成”)});return r});exportCSV((curCls?curCls.name:””)+”_作业.csv”,hd,rows)}
+function expEx(){var hd=[“学号”];exL.forEach(function(x){hd.push(x.title+”(”+x.date+”)”)});var rows=stu.map(function(sid){var r=[sid];exL.forEach(function(x){r.push(x.scores[sid]!=null?x.scores[sid]:””)});return r});exportCSV((curCls?curCls.name:””)+”_成绩.csv”,hd,rows)}
+function expAll(){var hd=[“学号”];hwL.forEach(function(x){hd.push(“作业:”+x.title)});exL.forEach(function(x){hd.push(“考试:”+x.title)});var rows=stu.map(function(sid){var r=[sid];hwL.forEach(function(x){r.push(HW_MAP[x.records[sid]]||“未完成”)});exL.forEach(function(x){r.push(x.scores[sid]!=null?x.scores[sid]:””)});return r});exportCSV((curCls?curCls.name:””)+”_汇总.csv”,hd,rows)}
+function resetAll(){if(!confirm(“确定清空所有数据？”))return;if(!confirm(“再次确认？”))return;save(makeDef());window.location.reload()}
+
+function EB(p){return h(“button”,{onClick:p.onClick,disabled:p.disabled,style:{display:“flex”,alignItems:“center”,gap:14,padding:“16px 18px”,borderRadius:12,background:”#1e1e2e”,border:“1px solid rgba(255,255,255,.05)”,cursor:p.disabled?“not-allowed”:“pointer”,opacity:p.disabled?0.4:1,textAlign:“left”,width:“100%”}},h(“span”,{style:{fontSize:28}},p.icon),h(“div”,null,h(“div”,{style:{fontWeight:600,fontSize:15,color:”#e2e8f0”}},p.label),h(“div”,{style:{fontSize:12,color:”#64748b”,marginTop:2}},p.desc)))}
+if(data.classes.length===0)return h(Empty,{icon:“📤”,text:“请先创建班级”});
+
+return h(“div”,null,
+h(“h2”,{style:{margin:“0 0 12px”,fontSize:16,fontWeight:600}},“数据导出”),
+h(ClassPicker,{classes:data.classes,value:selC,onChange:setSelC}),
+h(“p”,{style:{fontSize:13,color:”#94a3b8”,marginBottom:16}},“导出 CSV 文件，可用 Excel / WPS 打开”),
+h(“div”,{style:{display:“flex”,flexDirection:“column”,gap:10}},
+h(EB,{icon:“✅”,label:“导出作业情况”,desc:hwL.length+” 次作业记录”,onClick:expHw,disabled:hwL.length===0}),
+h(EB,{icon:“📝”,label:“导出考试成绩”,desc:exL.length+” 次考试记录”,onClick:expEx,disabled:exL.length===0}),
+h(EB,{icon:“📦”,label:“导出全部数据”,desc:“作业 + 考试合并导出”,onClick:expAll,disabled:hwL.length===0&&exL.length===0})),
+h(“div”,{style:{marginTop:40,paddingTop:20,borderTop:“1px solid rgba(255,255,255,.06)”}},
+h(Btn,{danger:true,onClick:resetAll,ex:{width:“100%”}},“🗑 清空所有数据”),
+h(“p”,{style:{fontSize:11,color:”#64748b”,textAlign:“center”,marginTop:8}},“此操作不可恢复，请谨慎操作”)));
+}
+
+// ── App ──
+function App(){
+var tab=useState(0),setTab=tab[1];tab=tab[0];
+var data=useState(function(){return load()||makeDef()}),setData=data[1];data=data[0];
+
+var update=useCallback(function(fn){
+setData(function(prev){var next=fn(JSON.parse(JSON.stringify(prev)));save(next);return next});
+},[]);
+
+var totalStu=0;data.classes.forEach(function(c){totalStu+=c.students.length});
+
+var tabBtns=TABS.map(function(t,i){
+var act=tab===i;
+return h(“button”,{key:i,onClick:function(){setTab(i)},style:{flex:1,padding:“12px 6px 10px”,border:“none”,cursor:“pointer”,fontSize:12,fontWeight:act?600:400,color:act?”#a5b4fc”:”#64748b”,background:“transparent”,borderBottom:act?“2px solid #818cf8”:“2px solid transparent”,transition:“all .15s”,whiteSpace:“nowrap”,minWidth:64}},
+h(“div”,{style:{fontSize:18,marginBottom:2}},TICONS[i]),t);
+});
+
+var content=null;
+if(tab===0)content=h(ClassTab,{data:data,update:update});
+if(tab===1)content=h(HomeworkTab,{data:data,update:update});
+if(tab===2)content=h(ExamTab,{data:data,update:update});
+if(tab===3)content=h(StatsTab,{data:data});
+if(tab===4)content=h(ExportTab,{data:data});
+
+return h(“div”,{style:{minHeight:“100vh”,background:”#14141f”,fontFamily:”‘Noto Sans SC’,sans-serif”,color:”#e2e8f0”}},
+h(“div”,{style:{background:“linear-gradient(135deg,#1e1b4b 0%,#312e81 50%,#4c1d95 100%)”,padding:“24px 28px 16px”,borderBottom:“1px solid rgba(255,255,255,.06)”}},
+h(“h1”,{style:{margin:0,fontSize:22,fontWeight:700,color:”#e2e8f0”,letterSpacing:1}},“📚 班级管理助手”),
+h(“p”,{style:{margin:“4px 0 0”,fontSize:12,color:”#a5b4fc”,opacity:0.8}},data.classes.length+” 个班级 · “+totalStu+” 名学生 · “+data.exams.length+” 次考试”)),
+h(“div”,{style:{display:“flex”,gap:0,borderBottom:“1px solid rgba(255,255,255,.06)”,background:”#1a1a2e”,overflowX:“auto”}},tabBtns),
+h(“div”,{style:{padding:“16px 16px 100px”}},content));
+}
+
+ReactDOM.createRoot(document.getElementById(“root”)).render(h(App));
+
+// Service Worker for offline
+if(“serviceWorker” in navigator){
+var sw=‘self.addEventListener(“install”,function(e){self.skipWaiting()});self.addEventListener(“fetch”,function(e){e.respondWith(fetch(e.request).catch(function(){return caches.match(e.request)}))})’;
+try{navigator.serviceWorker.register(URL.createObjectURL(new Blob([sw],{type:“application/javascript”})))}catch(e){}
+}
+</script>
+
+</body>
+</html>
