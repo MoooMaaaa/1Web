@@ -42,8 +42,13 @@ var u=URL.createObjectURL(blob),a=document.createElement("a");
 a.href=u;a.download=fn;a.click();URL.revokeObjectURL(u);
 }
 
-var TABS=["作业情况","统计"];
-var SET_TABS=["班级管理","考试成绩","数据导出"];
+var TABS=["作业情况"];
+var SET_ITEMS=[
+{title:"班级管理",desc:"管理班级和学生名单",color:"#6366f1"},
+{title:"考试成绩",desc:"录入和查看考试记录",color:"#06b6d4"},
+{title:"数据导出",desc:"导出CSV，清空数据",color:"#f59e0b"},
+{title:"统计",desc:"作业和成绩数据统计",color:"#22c55e"}
+];
 var WEEKS=["周日","周一","周二","周三","周四","周五","周六"];
 function fmtDate(d){var p=d.split("-");var dt=new Date(d+"T12:00:00");return parseInt(p[1])+"月"+parseInt(p[2])+"日 "+WEEKS[dt.getDay()]}
 var HW_MAP={missing:"未完成",done:"完成",excellent:"优秀"};
@@ -314,20 +319,17 @@ h(Btn,{primary:true,onClick:function(){addStu(showAS)},ex:{width:"100%",marginTo
 
 // ── HomeworkTab ──
 function HomeworkTab(props){
-var data=props.data,update=props.update;
+var data=props.data,update=props.update,viewDate=props.viewDate;
 var s=useState;
 var showAdd=s(false),setShowAdd=showAdd[1];showAdd=showAdd[0];
 var title=s(""),setTitle=title[1];title=title[0];
 var createDate=s(new Date().toISOString().slice(0,10)),setCreateDate=createDate[1];createDate=createDate[0];
-var viewDate=s(new Date().toISOString().slice(0,10)),setViewDate=viewDate[1];viewDate=viewDate[0];
 var selC=s(data.classes.length>0?data.classes[0].id:null),setSelC=selC[1];selC=selC[0];
 var exp=s(null),setExp=exp[1];exp=exp[0];
-var todayStr=new Date().toISOString().slice(0,10);
 
 var hwList=useMemo(function(){if(!selC)return[];return data.homework.filter(function(h){return h.classId===selC&&h.date===viewDate})},[data.homework,selC,viewDate]);
 var curStu=useMemo(function(){var c=data.classes.find(function(x){return x.id===selC});return c?c.students:[]},[data.classes,selC]);
 
-function shiftDay(n){var d=new Date(viewDate+"T12:00:00");d.setDate(d.getDate()+n);setViewDate(d.toISOString().slice(0,10));}
 function openAdd(){setCreateDate(viewDate);setTitle("");setShowAdd(true);}
 function addHw(def){
 if(!title.trim()||!selC)return;
@@ -352,13 +354,6 @@ else prompt("请复制：",text);
 }
 
 if(data.classes.length===0)return h(Empty,{text:"请先创建班级"});
-
-var navBtnSt={padding:"6px 12px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(255,255,255,.07)",color:"#a5b4fc",fontSize:15,fontWeight:600};
-var dateNav=h("div",{style:{display:"flex",alignItems:"center",gap:8,marginBottom:12,background:"#1e1e2e",borderRadius:10,padding:"8px 12px"}},
-h("button",{onClick:function(){shiftDay(-1)},style:navBtnSt},"<"),
-h("div",{style:{flex:1,textAlign:"center",fontSize:14,fontWeight:600,color:"#e2e8f0"}},fmtDate(viewDate)),
-h("button",{onClick:function(){shiftDay(1)},style:navBtnSt},">"),
-viewDate!==todayStr&&h("button",{onClick:function(){setViewDate(todayStr)},style:Object.assign({},navBtnSt,{fontSize:12,color:"#64748b"})},"今天"));
 
 var cards=[];
 hwList.forEach(function(hw){
@@ -395,7 +390,6 @@ return h("div",null,
 h("div",{style:{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:12}},
 h(ClassPicker,{classes:data.classes,value:selC,onChange:function(v){setSelC(v);setExp(null)}}),
 h(Btn,{primary:true,onClick:openAdd},"+ 新建")),
-dateNav,
 hwList.length===0?h(Empty,{text:"当天暂无作业记录"}):h("div",{style:{display:"flex",flexDirection:"column",gap:10}},cards),
 h(Modal,{open:showAdd,onClose:function(){setShowAdd(false)},title:"新建作业"},
 h(FInput,{label:"作业名称",value:title,onChange:function(e){setTitle(e.target.value)},placeholder:"例如：第三章课后习题"}),
@@ -556,48 +550,55 @@ h("p",{style:{fontSize:11,color:"#64748b",textAlign:"center",marginTop:8}},"此�
 
 // ── App ──
 function App(){
-var tab=useState(0),setTab=tab[1];tab=tab[0];
 var showSettings=useState(false),setShowSettings=showSettings[1];showSettings=showSettings[0];
-var stab=useState(0),setStab=stab[1];stab=stab[0];
+var stab=useState(null),setStab=stab[1];stab=stab[0];
 var data=useState(function(){return load()||makeDef()}),setData=data[1];data=data[0];
+var todayStr=new Date().toISOString().slice(0,10);
+var viewDate=useState(todayStr),setViewDate=viewDate[1];viewDate=viewDate[0];
 
 var update=useCallback(function(fn){
 setData(function(prev){var next=fn(JSON.parse(JSON.stringify(prev)));save(next);return next});
 },[]);
 
-var tabBtns=TABS.map(function(t,i){
-var act=tab===i;
-return h("button",{key:i,onClick:function(){setTab(i)},style:{flex:1,padding:"14px 6px",border:"none",cursor:"pointer",fontSize:13,fontWeight:act?600:400,color:act?"#a5b4fc":"#64748b",background:"transparent",borderBottom:act?"2px solid #818cf8":"2px solid transparent",transition:"all .15s",whiteSpace:"nowrap"}},t);
-});
+function shiftDay(n){var d=new Date(viewDate+"T12:00:00");d.setDate(d.getDate()+n);setViewDate(d.toISOString().slice(0,10));}
 
-var stabBtns=SET_TABS.map(function(t,i){
-var act=stab===i;
-return h("button",{key:i,onClick:function(){setStab(i)},style:{flex:1,padding:"14px 6px",border:"none",cursor:"pointer",fontSize:13,fontWeight:act?600:400,color:act?"#a5b4fc":"#64748b",background:"transparent",borderBottom:act?"2px solid #818cf8":"2px solid transparent",transition:"all .15s",whiteSpace:"nowrap"}},t);
-});
+var navBtnSt={padding:"6px 12px",borderRadius:8,border:"none",cursor:"pointer",background:"rgba(255,255,255,.07)",color:"#a5b4fc",fontSize:15,fontWeight:600,flexShrink:0};
 
-var content=null;
-if(tab===0)content=h(HomeworkTab,{data:data,update:update});
-if(tab===1)content=h(StatsTab,{data:data});
+var content=h(HomeworkTab,{data:data,update:update,viewDate:viewDate});
 
 var scontent=null;
 if(stab===0)scontent=h(ClassTab,{data:data,update:update});
 if(stab===1)scontent=h(ExamTab,{data:data,update:update});
 if(stab===2)scontent=h(ExportTab,{data:data});
+if(stab===3)scontent=h(StatsTab,{data:data});
+
+var settingsList=SET_ITEMS.map(function(item,i){
+return h("div",{key:i,onClick:function(){setStab(i)},style:{display:"flex",alignItems:"center",gap:14,padding:"16px",background:"#1e1e2e",borderRadius:12,border:"1px solid rgba(255,255,255,.05)",marginBottom:10,cursor:"pointer"}},
+h("div",{style:{width:36,height:36,borderRadius:10,background:item.color+"22",display:"flex",alignItems:"center",justifyContent:"center",flexShrink:0}},
+h("div",{style:{width:10,height:10,borderRadius:5,background:item.color}})),
+h("div",{style:{flex:1}},
+h("div",{style:{fontWeight:600,fontSize:15,color:"#e2e8f0"}},item.title),
+h("div",{style:{fontSize:12,color:"#64748b",marginTop:2}},item.desc)),
+h("span",{style:{color:"#4a5568",fontSize:20,lineHeight:1}},"›"));
+});
 
 return h("div",{style:{minHeight:"100vh",background:"#14141f",fontFamily:"'PingFang SC','Hiragino Sans GB','Microsoft YaHei','Noto Sans SC',sans-serif",color:"#e2e8f0"}},
-h("div",{style:{display:"flex",alignItems:"stretch",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
-h("div",{style:{display:"flex",flex:1}},tabBtns),
-h("button",{onClick:function(){setShowSettings(true)},style:{padding:"10px 16px",border:"none",cursor:"pointer",background:"transparent",color:"#64748b",flexShrink:0,display:"flex",alignItems:"center"}},
-h("svg",{width:20,height:20,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"},
+h("div",{style:{display:"flex",alignItems:"center",gap:8,padding:"8px 12px",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
+h("button",{onClick:function(){shiftDay(-1)},style:navBtnSt},"<"),
+h("div",{style:{flex:1,textAlign:"center",fontSize:14,fontWeight:600,color:"#e2e8f0"}},fmtDate(viewDate)),
+h("button",{onClick:function(){shiftDay(1)},style:navBtnSt},">"),
+viewDate!==todayStr&&h("button",{onClick:function(){setViewDate(todayStr)},style:Object.assign({},navBtnSt,{fontSize:12,color:"#64748b"})},"今天"),
+h("button",{onClick:function(){setShowSettings(true);setStab(null)},style:{padding:"6px 10px",border:"none",cursor:"pointer",background:"rgba(255,255,255,.07)",color:"#64748b",borderRadius:8,display:"flex",alignItems:"center",flexShrink:0,marginLeft:4}},
+h("svg",{width:18,height:18,viewBox:"0 0 24 24",fill:"none",stroke:"currentColor",strokeWidth:2,strokeLinecap:"round",strokeLinejoin:"round"},
 h("circle",{cx:12,cy:12,r:3}),
 h("path",{d:"M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"})))),
 h("div",{style:{padding:"16px 16px 100px"}},content),
 showSettings&&h("div",{style:{position:"fixed",inset:0,zIndex:100,background:"#14141f",display:"flex",flexDirection:"column"}},
 h("div",{style:{display:"flex",alignItems:"center",gap:12,padding:"14px 16px",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},
-h("button",{onClick:function(){setShowSettings(false)},style:{background:"none",border:"none",color:"#a5b4fc",fontSize:15,cursor:"pointer",padding:0}},"← 返回"),
-h("span",{style:{fontWeight:600,fontSize:15}},"设置")),
-h("div",{style:{display:"flex",borderBottom:"1px solid rgba(255,255,255,.06)",background:"#1a1a2e"}},stabBtns),
-h("div",{style:{flex:1,overflowY:"auto",padding:"16px 16px 100px"}},scontent)));
+h("button",{onClick:function(){stab===null?setShowSettings(false):setStab(null)},style:{background:"none",border:"none",color:"#a5b4fc",fontSize:15,cursor:"pointer",padding:0}},"← 返回"),
+h("span",{style:{fontWeight:600,fontSize:15}},stab===null?"设置":SET_ITEMS[stab].title)),
+h("div",{style:{flex:1,overflowY:"auto",padding:"16px 16px 100px"}},
+stab===null?h("div",null,settingsList):scontent)));
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(h(App));
